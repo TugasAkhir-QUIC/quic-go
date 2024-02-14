@@ -2,11 +2,11 @@ package quic
 
 import (
 	"errors"
+	"sort"
 	"sync"
 
 	"github.com/quic-go/quic-go/internal/ackhandler"
 	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/internal/utils/ringbuffer"
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -31,7 +31,8 @@ type framerI struct {
 	streamGetter streamGetter
 
 	activeStreams map[protocol.StreamID]struct{}
-	streamQueue   ringbuffer.RingBuffer[protocol.StreamID]
+	//streamQueue   ringbuffer.RingBuffer[protocol.StreamID]
+	streamQueue []protocol.StreamID
 
 	controlFrameMutex sync.Mutex
 	controlFrames     []wire.Frame
@@ -49,7 +50,7 @@ func newFramer(streamGetter streamGetter) framer {
 
 func (f *framerI) HasData() bool {
 	f.mutex.Lock()
-	hasData := !f.streamQueue.Empty()
+	hasData := len(f.streamQueue) > 0
 	f.mutex.Unlock()
 	if hasData {
 		return true
@@ -108,51 +109,148 @@ func (f *framerI) AppendControlFrames(frames []ackhandler.Frame, maxLen protocol
 func (f *framerI) AddActiveStream(id protocol.StreamID) {
 	f.mutex.Lock()
 	if _, ok := f.activeStreams[id]; !ok {
-		f.streamQueue.PushBack(id)
+		f.streamQueue = append(f.streamQueue, id)
 		f.activeStreams[id] = struct{}{}
+		f.sortQueue()
 	}
 	f.mutex.Unlock()
+}
+
+func (f *framerI) sortQueue() {
+	// Sort the queue by descending priority order
+	sort.SliceStable(f.streamQueue, func(i int, j int) bool {
+		str1, err := f.streamGetter.GetOrOpenSendStream(f.streamQueue[i])
+		if str1 == nil || err != nil {
+			return false // Push to the front so we can pop it
+		}
+
+		str2, err := f.streamGetter.GetOrOpenSendStream(f.streamQueue[j])
+		if str2 == nil || err != nil {
+			return true // Push to the front so we can pop it
+		}
+
+		return str1.getPriority() > str2.getPriority()
+	})
 }
 
 func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen protocol.ByteCount, v protocol.Version) ([]ackhandler.StreamFrame, protocol.ByteCount) {
 	startLen := len(frames)
 	var length protocol.ByteCount
 	f.mutex.Lock()
+
+	// TODO perform this sort when SetPriority() is called
+	f.sortQueue()
+
+	// Record information about streams with the same priority
+	priorityCurrent := 0 // The current priority value
+	prioritySent := 0    // The number of sent streams with this priority
+	priorityUnsent := 0  // The number of unsent streams with this priority
+
+	i := 0
+
 	// pop STREAM frames, until less than MinStreamFrameSize bytes are left in the packet
-	numActiveStreams := f.streamQueue.Len()
-	for i := 0; i < numActiveStreams; i++ {
-		if protocol.MinStreamFrameSize+length > maxLen {
-			break
-		}
-		id := f.streamQueue.PopFront()
+	for i < len(f.streamQueue) {
+		id := f.streamQueue[i]
 		// This should never return an error. Better check it anyway.
 		// The stream will only be in the streamQueue, if it enqueued itself there.
 		str, err := f.streamGetter.GetOrOpenSendStream(id)
 		// The stream can be nil if it completed after it said it had data.
 		if str == nil || err != nil {
 			delete(f.activeStreams, id)
+
+			// Shift the remaining elements in the queue forward
+			copy(f.streamQueue[i:], f.streamQueue[i+1:])
+			f.streamQueue = f.streamQueue[:len(f.streamQueue)-1]
+
+			// Don't increment i since we just removed an element
 			continue
 		}
+
+		// Get the priority for the current stream
+		priority := str.getPriority()
+		full := protocol.MinStreamFrameSize+length > maxLen
+		if full {
+			// If we're full, see if the previous streams had the same priority
+			if priority != priorityCurrent {
+				// We can stop interating since we've found all streams with the same priority
+				break
+			}
+
+			// Keep looping until this is no longer the case.
+			priorityUnsent += 1
+			i += 1
+
+			continue
+		}
+
+		// See if the previous streams had the same priority
+		if i == 0 || priority != priorityCurrent {
+			// We just sent a new priority level; reset our counters
+			priorityCurrent = priority
+			priorityUnsent = 0
+			prioritySent = 0
+		}
+
 		remainingLen := maxLen - length
 		// For the last STREAM frame, we'll remove the DataLen field later.
 		// Therefore, we can pretend to have more bytes available when popping
 		// the STREAM frame (which will always have the DataLen set).
 		remainingLen += quicvarint.Len(uint64(remainingLen))
+
 		frame, ok, hasMoreData := str.popStreamFrame(remainingLen, v)
-		if hasMoreData { // put the stream back in the queue (at the end)
-			f.streamQueue.PushBack(id)
-		} else { // no more data to send. Stream is not active
-			delete(f.activeStreams, id)
-		}
 		// The frame can be "nil"
 		// * if the receiveStream was canceled after it said it had data
 		// * the remaining size doesn't allow us to add another STREAM frame
-		if !ok {
+		if ok {
+			frames = append(frames, frame)
+			length += frame.Frame.Length(v)
+		}
+		if !hasMoreData {
+			// no more data to send. Stream is not active any more
+			delete(f.activeStreams, id)
+
+			// Shift the remaining elements in the queue forward
+			copy(f.streamQueue[i:], f.streamQueue[i+1:])
+			f.streamQueue = f.streamQueue[:len(f.streamQueue)-1]
+
+			// Don't increment i since we just removed an element
 			continue
 		}
-		frames = append(frames, frame)
-		length += frame.Frame.Length(v)
+
+		i += 1
+		prioritySent += 1
 	}
+
+	if priorityUnsent > 0 && prioritySent > 0 {
+		// There were some streams sent and some streams unsent within the same priority.
+		// We want to swap the last `priorityUnsent` values with the prior `prioritySent` values.
+		// This way we will round-robin streams with the same priority.
+		swap := make([]protocol.StreamID, prioritySent)
+
+		end := i
+		middle := end - priorityUnsent
+		start := middle - prioritySent
+
+		copy(swap, f.streamQueue[start:middle+1])
+		copy(f.streamQueue[start:], f.streamQueue[middle:end])
+		copy(f.streamQueue[end-len(swap):], swap)
+
+		// Example:
+		// i = 7
+		// streamQueue (priority): [ 7, 7, 5, 5, 5, 5, 5, 2, 2 ]
+		// priorityUnset = 3
+		// prioritySent = 2
+
+		// We want to move index 2,3 to index 5,6 and index 4,5,6 to index 2,3,4
+		// end = 7
+		// middle = 4
+		// start = 2
+
+		// copy(swap, queue[2:5])
+		// copy(queue[2:], queue[4:7])
+		// copy(queue[5:], swap)
+	}
+
 	f.mutex.Unlock()
 	if len(frames) > startLen {
 		l := frames[len(frames)-1].Frame.Length(v)
@@ -160,6 +258,7 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 		frames[len(frames)-1].Frame.DataLenPresent = false
 		length += frames[len(frames)-1].Frame.Length(v) - l
 	}
+
 	return frames, length
 }
 
@@ -168,7 +267,7 @@ func (f *framerI) Handle0RTTRejection() error {
 	defer f.mutex.Unlock()
 
 	f.controlFrameMutex.Lock()
-	f.streamQueue.Clear()
+	f.streamQueue = f.streamQueue[:0]
 	for id := range f.activeStreams {
 		delete(f.activeStreams, id)
 	}

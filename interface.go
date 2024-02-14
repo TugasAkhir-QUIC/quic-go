@@ -135,6 +135,10 @@ type SendStream interface {
 	// some data was successfully written.
 	// A zero value for t means Write will not time out.
 	SetWriteDeadline(t time.Time) error
+	// Set the priority of this stream, relative to other streams.
+	// During congestion, the stream with the higher priority will be sent first.
+	// If two streams have the same priority, they will be round-robined.
+	SetPriority(priority int)
 }
 
 // A Connection is a QUIC connection between two peers.
@@ -199,6 +203,14 @@ type Connection interface {
 	SendDatagram(payload []byte) error
 	// ReceiveDatagram gets a message received in a datagram, as specified in RFC 9221.
 	ReceiveDatagram(context.Context) ([]byte, error)
+
+	// Returns the estimated max send bandwidth in bits/second as reported by the congestion controller.
+	// If SetMaxBandwidth is non-zero, that value is returned instead if it is lower.
+	GetMaxBandwidth() uint64
+
+	// SetMaxBandwidth artificially limits the maximum send bandwidth to the provided bits/second.
+	// This is disabled by setting a value of 0, which is the default.
+	SetMaxBandwidth(limit uint64)
 }
 
 // An EarlyConnection is a connection that is handshaking.

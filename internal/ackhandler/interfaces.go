@@ -1,6 +1,7 @@
 package ackhandler
 
 import (
+	"github.com/quic-go/quic-go/internal/congestion"
 	"time"
 
 	"github.com/quic-go/quic-go/internal/protocol"
@@ -35,6 +36,8 @@ type SentPacketHandler interface {
 
 	GetLossDetectionTimeout() time.Time
 	OnLossDetectionTimeout() error
+	GetMaxBandwidth() congestion.Bandwidth
+	SetMaxBandwidth(congestion.Bandwidth)
 }
 
 type sentPacketTracker interface {

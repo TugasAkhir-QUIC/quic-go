@@ -21,6 +21,7 @@ type sendStreamI interface {
 	popStreamFrame(maxBytes protocol.ByteCount, v protocol.Version) (frame ackhandler.StreamFrame, ok, hasMore bool)
 	closeForShutdown(error)
 	updateSendWindow(protocol.ByteCount)
+	getPriority() int
 }
 
 type sendStream struct {
@@ -52,6 +53,8 @@ type sendStream struct {
 	deadline  time.Time
 
 	flowController flowcontrol.StreamFlowController
+
+	priority int
 }
 
 var (
@@ -491,4 +494,12 @@ func (s *sendStreamAckHandler) OnLost(f wire.Frame) {
 	s.mutex.Unlock()
 
 	s.sender.onHasStreamData(s.streamID)
+}
+
+func (s *sendStream) getPriority() int {
+	return s.priority
+}
+
+func (s *sendStream) SetPriority(priority int) {
+	s.priority = priority
 }

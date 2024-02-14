@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/quic-go/quic-go/internal/congestion"
 	"io"
 	"net"
 	"reflect"
@@ -2391,4 +2392,12 @@ func (s *connection) NextConnection() Connection {
 	<-s.HandshakeComplete()
 	s.streamsMap.UseResetMaps()
 	return s
+}
+
+func (s *connection) GetMaxBandwidth() uint64 {
+	return uint64(s.sentPacketHandler.GetMaxBandwidth())
+}
+
+func (s *connection) SetMaxBandwidth(limit uint64) {
+	s.sentPacketHandler.SetMaxBandwidth(congestion.Bandwidth(limit))
 }

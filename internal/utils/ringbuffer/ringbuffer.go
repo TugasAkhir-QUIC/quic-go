@@ -94,3 +94,11 @@ func (r *RingBuffer[T]) Clear() {
 	}
 	r.headPos, r.tailPos, r.full = 0, 0, false
 }
+
+func (r *RingBuffer[T]) GetRing() []T {
+	return r.ring
+}
+
+func (r *RingBuffer[T]) SetRing(value []T) {
+	r.ring = value
+}

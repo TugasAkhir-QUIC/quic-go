@@ -82,6 +82,9 @@ type sentPacketHandler struct {
 	congestion congestion.SendAlgorithmWithDebugInfos
 	rttStats   *utils.RTTStats
 
+	// If non-zero, artificailly limits the send rate.
+	maxBandwidth congestion.Bandwidth
+
 	// The number of times a PTO has been sent without receiving an ack.
 	ptoCount uint32
 	ptoMode  SendMode
@@ -99,6 +102,22 @@ type sentPacketHandler struct {
 
 	tracer *logging.ConnectionTracer
 	logger utils.Logger
+}
+
+func (h *sentPacketHandler) GetMaxBandwidth() congestion.Bandwidth {
+	estimate := h.congestion.BandwidthEstimate()
+
+	if h.maxBandwidth > 0 && h.maxBandwidth < estimate {
+		// Limit our maximum bandwidth
+		return h.maxBandwidth
+	}
+
+	return estimate
+}
+
+func (h *sentPacketHandler) SetMaxBandwidth(bandwidth congestion.Bandwidth) {
+	//TODO implement me
+	panic("implement me")
 }
 
 var (

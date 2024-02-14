@@ -196,7 +196,7 @@ func (w *responseWriter) Flush() {
 	}
 }
 
-func (w *responseWriter) StreamCreator() StreamCreator {
+func (w *responseWriter) Connection() quic.Connection {
 	return w.conn
 }
 

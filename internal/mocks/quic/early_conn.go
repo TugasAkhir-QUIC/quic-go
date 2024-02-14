@@ -13,8 +13,8 @@ import (
 	net "net"
 	reflect "reflect"
 
-	quic "github.com/quic-go/quic-go"
-	qerr "github.com/quic-go/quic-go/internal/qerr"
+	quic "github.com/TugasAkhir-QUIC/quic-go"
+	qerr "github.com/TugasAkhir-QUIC/quic-go/internal/qerr"
 	gomock "go.uber.org/mock/gomock"
 )
 

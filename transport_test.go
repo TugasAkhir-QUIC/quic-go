@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	mocklogging "github.com/quic-go/quic-go/internal/mocks/logging"
-	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/internal/wire"
-	"github.com/quic-go/quic-go/logging"
+	mocklogging "github.com/TugasAkhir-QUIC/quic-go/internal/mocks/logging"
+	"github.com/TugasAkhir-QUIC/quic-go/internal/protocol"
+	"github.com/TugasAkhir-QUIC/quic-go/internal/wire"
+	"github.com/TugasAkhir-QUIC/quic-go/logging"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

@@ -12,10 +12,10 @@ import (
 	reflect "reflect"
 	time "time"
 
-	ackhandler "github.com/quic-go/quic-go/internal/ackhandler"
-	congestion "github.com/quic-go/quic-go/internal/congestion"
-	protocol "github.com/quic-go/quic-go/internal/protocol"
-	wire "github.com/quic-go/quic-go/internal/wire"
+	ackhandler "github.com/TugasAkhir-QUIC/quic-go/internal/ackhandler"
+	congestion "github.com/TugasAkhir-QUIC/quic-go/internal/congestion"
+	protocol "github.com/TugasAkhir-QUIC/quic-go/internal/protocol"
+	wire "github.com/TugasAkhir-QUIC/quic-go/internal/wire"
 	gomock "go.uber.org/mock/gomock"
 )
 

@@ -12,8 +12,8 @@ import (
 	reflect "reflect"
 	time "time"
 
-	congestion "github.com/quic-go/quic-go/internal/congestion"
-	protocol "github.com/quic-go/quic-go/internal/protocol"
+	congestion "github.com/TugasAkhir-QUIC/quic-go/internal/congestion"
+	protocol "github.com/TugasAkhir-QUIC/quic-go/internal/protocol"
 	gomock "go.uber.org/mock/gomock"
 )
 

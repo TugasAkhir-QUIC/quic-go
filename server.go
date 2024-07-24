@@ -84,11 +84,11 @@ type baseServer struct {
 	newConn func(
 		sendConn,
 		connRunner,
-		protocol.ConnectionID, /* original dest connection ID */
+		protocol.ConnectionID,  /* original dest connection ID */
 		*protocol.ConnectionID, /* retry src connection ID */
-		protocol.ConnectionID, /* client dest connection ID */
-		protocol.ConnectionID, /* destination connection ID */
-		protocol.ConnectionID, /* source connection ID */
+		protocol.ConnectionID,  /* client dest connection ID */
+		protocol.ConnectionID,  /* destination connection ID */
+		protocol.ConnectionID,  /* source connection ID */
 		ConnectionIDGenerator,
 		protocol.StatelessResetToken,
 		*Config,
@@ -198,6 +198,11 @@ func ListenAddrEarly(addr string, tlsConf *tls.Config, config *Config) (*EarlyLi
 		Conn:        conn,
 		createdConn: true,
 		isSingleUse: true,
+		Tracer: &logging.Tracer{
+			SentPacket: func(addr net.Addr, header *logging.Header, count logging.ByteCount, frames []logging.Frame) {
+				fmt.Println(header.PacketType())
+			},
+		},
 	}).ListenEarly(tlsConf, config)
 }
 
